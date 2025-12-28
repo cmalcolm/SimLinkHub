@@ -1,0 +1,12 @@
+﻿<Application x:Class="SimLinkHub.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:SimLinkHub"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <helpers:BooleanToColorConverter x:Key="BooleanToColorConverter" xmlns:helpers="clr-namespace:SimLinkHub.Helpers"/>
+            <helpers:ConnectionTextConverter x:Key="ConnectionTextConverter" xmlns:helpers="clr-namespace:SimLinkHub.Helpers"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
