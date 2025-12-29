@@ -1,6 +1,8 @@
-﻿using SimLinkHub.ViewModels;
+﻿using SimLinkHub.Models;
+using SimLinkHub.ViewModels;
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 
 namespace SimLinkHub
@@ -57,6 +59,18 @@ namespace SimLinkHub
         private void Test100_Click(object sender, RoutedEventArgs e)
         {
             if (DataContext is MainViewModel vm) vm.TestFlaps(100);
+        }
+        private void TestButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.DataContext is SimInstrument inst)
+            {
+                // Get the percentage from the "Tag" we set in XAML
+                double percent = double.Parse(btn.Tag.ToString());
+
+                // Tell the ViewModel to run the test
+                var vm = (MainViewModel)this.DataContext;
+                vm.ManualTest(inst, percent);
+            }
         }
     }
 }

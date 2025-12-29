@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using SimLinkHub.Data;
 using SimLinkHub.Models;
 using SimLinkHub.Services;
+using System.Collections.ObjectModel;
 
 namespace SimLinkHub.ViewModels;
 
@@ -17,18 +18,17 @@ public partial class MainViewModel : ObservableObject
     private readonly ArduinoService _arduinoService;
     private IntPtr _mainWindowHandle;
 
-    // Cache for instruments loaded from the Database
-    private List<SimInstrument> _activeInstruments = new();
+    //private List<SimInstrument> _activeInstruments = new();
+    [ObservableProperty]
+    private ObservableCollection<SimInstrument> _activeInstruments = new();
     private Dictionary<int, double> _lastSentValues = new();
 
     #region UI Properties
-
     [ObservableProperty] private string _statusMessage = "Ready to Connect";
     [ObservableProperty] private bool _isSimConnected;
     [ObservableProperty] private bool _isArduinoConnected;
     [ObservableProperty] private string _flapsDisplay = "0.0%";
     [ObservableProperty] private string _trimDisplay = "0.0";
-
     #endregion
 
     public MainViewModel()
@@ -36,32 +36,64 @@ public partial class MainViewModel : ObservableObject
         _simService = new SimConnectService();
         _arduinoService = new ArduinoService();
 
-        // Wire up the SimConnect Data Bridge
-        _simService.OnDataReceived += (data) =>
+        // UPDATED: Receives a double array instead of a SimData struct
+        _simService.OnDataReceived += (double[] values) =>
         {
-            // 1. Update UI Elements directly
-            FlapsDisplay = $"{data.FlapsTrailingEdgePercent:F1}%";
-            //TrimDisplay = data.ElevatorTrimPercent.ToString("F1");
-
-            // 2. Route data to the generic database-driven handler
-            HandleSimData(data);
+            HandleSimData(values);
         };
     }
 
-    /// <summary>
-    /// Loads instrument configurations from SQLite and caches them.
-    /// </summary>
+    //public async Task LoadInstrumentsFromDb()
+    //{
+    //    try
+    //    {
+    //        using var db = new AppDbContext();
+    //        //_activeInstruments = await db.Instruments.Include(i => i.Arduino).ToListAsync();
+    //        _activeInstruments = await db.Instruments
+    //            .Include(i => i.Arduino)
+    //            .Where(i => i.TelemetryPrefix != null && i.TelemetryPrefix != ' ') // Only get outputs
+    //            .ToListAsync();
+
+    //        // --- LOGGING START ---
+    //        System.Diagnostics.Debug.WriteLine("===== DB CONTENT START =====");
+    //        foreach (var inst in _activeInstruments)
+    //        {
+    //            System.Diagnostics.Debug.WriteLine($"Instrument: {inst.Name} | Max: {inst.OutputMax} | Index: {inst.DataIndex}");
+    //        }
+    //        System.Diagnostics.Debug.WriteLine("===== DB CONTENT END =====");
+    //        // --- LOGGING END ---
+
+    //        _lastSentValues = _activeInstruments.ToDictionary(i => i.Id, i => -999.0);
+
+    //        System.Diagnostics.Debug.WriteLine($"DB LOADED: Found {_activeInstruments.Count} instruments.");
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        System.Diagnostics.Debug.WriteLine($"Database Load Error: {ex.Message}");
+    //    }
+    //}
     public async Task LoadInstrumentsFromDb()
     {
         try
         {
             using var db = new AppDbContext();
-            _activeInstruments = await db.Instruments.Include(i => i.Arduino).ToListAsync();
+            var instruments = await db.Instruments
+                .Include(i => i.Arduino)
+                .Where(i => i.TelemetryPrefix != null && i.TelemetryPrefix != ' ')
+                .ToListAsync();
 
-            // Initialize the "last sent" tracker for each instrument to prevent spam
-            _lastSentValues = _activeInstruments.ToDictionary(i => i.Id, i => -999.0);
+            // Run this on the UI thread to ensure the collection update is thread-safe
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ActiveInstruments.Clear();
+                foreach (var inst in instruments)
+                {
+                    ActiveInstruments.Add(inst);
+                }
+            });
 
-            System.Diagnostics.Debug.WriteLine($"DB LOADED: Found {_activeInstruments.Count} instruments.");
+            _lastSentValues = ActiveInstruments.ToDictionary(i => i.Id, i => -999.0);
+            System.Diagnostics.Debug.WriteLine($"DB LOADED: Found {ActiveInstruments.Count} instruments.");
         }
         catch (Exception ex)
         {
@@ -69,28 +101,31 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Iterates through all instruments in the DB and sends updates to Arduino if data changed.
-    /// </summary>
-    private void HandleSimData(SimData data)
+    // UPDATED: Uses the DataIndex to pull values from the array
+    private void HandleSimData(double[] values)
     {
         if (!_arduinoService.IsConnected) return;
 
         foreach (var inst in _activeInstruments)
         {
-            // 1. Extract the specific value from the SimData struct using Reflection
-            double rawValue = GetValueByVarName(data, inst.SimVarName);
-
-            // 2. Check for significant change (Threshold of 0.5 to prevent jitter)
-            if (Math.Abs(rawValue - _lastSentValues[inst.Id]) > 0.5)
+            // Ensure the instrument's index exists in the data we received
+            if (inst.DataIndex >= 0 && inst.DataIndex < values.Length)
             {
-                _lastSentValues[inst.Id] = rawValue;
+                double rawValue = values[inst.DataIndex];
 
-                // 3. Map the Sim value (e.g. -100 to 100) to Byte (0 to 255)
-                byte scaledValue = ScaleValue(rawValue, inst);
+                if (Math.Abs(rawValue - _lastSentValues[inst.Id]) > 0.5)
+                {
+                    _lastSentValues[inst.Id] = rawValue;
 
-                // 4. Send via Serial (Leonardo will route it via I2C using the Prefix)
-                _arduinoService.SendData(inst.TelemetryPrefix, scaledValue);
+                    // Update UI (Direct mapping based on prefix)
+                    Application.Current.Dispatcher.Invoke(() => {
+                        if (inst.TelemetryPrefix == 'F') FlapsDisplay = $"{rawValue:F1}%";
+                        if (inst.TelemetryPrefix == 'T') TrimDisplay = rawValue.ToString("F1");
+                    });
+
+                    byte scaledValue = ScaleValue(rawValue, inst);
+                    _arduinoService.SendData(inst.TelemetryPrefix, scaledValue);
+                }
             }
         }
     }
@@ -99,22 +134,27 @@ public partial class MainViewModel : ObservableObject
 
     private byte ScaleValue(double input, SimInstrument config)
     {
-        // Constrain input to defined limits
+        // 1. Constrain input
         double constrainedInput = Math.Max(config.InputMin, Math.Min(config.InputMax, input));
 
-        // Linear Map formula: (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
-        double result = (constrainedInput - config.InputMin) * (config.OutputMax - config.OutputMin)
-                        / (config.InputMax - config.InputMin) + config.OutputMin;
+        // 2. Force double-precision math by using (double) casts or the 'input' variable
+        double numerator = (constrainedInput - config.InputMin) * (config.OutputMax - config.OutputMin);
+        double denominator = (config.InputMax - config.InputMin);
 
-        return config.IsInverted ? (byte)(config.OutputMax - (byte)result) : (byte)result;
+        if (denominator == 0) return (byte)config.OutputMin;
+
+        double result = (numerator / denominator) + config.OutputMin;
+
+        // 3. Handle Inversion and return as a byte (0-255)
+        if (config.IsInverted)
+        {
+            return (byte)Math.Clamp(config.OutputMax - result + config.OutputMin, 0, 255);
+        }
+
+        return (byte)Math.Clamp(result, 0, 255);
     }
 
-    private double GetValueByVarName(SimData data, string varName)
-    {
-        // Matches DB string (e.g. "ElevatorTrimPercent") to the property in SimData struct
-        var prop = typeof(SimData).GetProperty(varName);
-        return prop != null ? (double)prop.GetValue(data) : 0;
-    }
+    // REMOVED: GetValueByVarName (Reflection is no longer needed!)
 
     #endregion
 
@@ -124,12 +164,10 @@ public partial class MainViewModel : ObservableObject
     {
         _mainWindowHandle = handle;
 
-        // Load settings then start watcher
         _ = Task.Run(async () =>
         {
             using (var db = new AppDbContext())
             {
-                // Only seed if the database is empty
                 if (!db.Instruments.Any())
                 {
                     var flapNano = new ArduinoDevice { FriendlyName = "Flap Nano", I2CAddress = 0x09 };
@@ -142,8 +180,10 @@ public partial class MainViewModel : ObservableObject
                         {
                             Name = "Flaps",
                             ArduinoDeviceId = flapNano.Id,
-                            SimVarName = "FlapsTrailingEdgePercent",
+                            SimVarName = "TRAILING EDGE FLAPS LEFT PERCENT",
+                            Units = "Percent",
                             TelemetryPrefix = 'F',
+                            DataIndex = 0,
                             InputMin = 0,
                             InputMax = 100,
                             OutputMin = 0,
@@ -153,8 +193,10 @@ public partial class MainViewModel : ObservableObject
                         {
                             Name = "Elevator Trim",
                             ArduinoDeviceId = trimNano.Id,
-                            SimVarName = "ElevatorTrimPercent",
+                            SimVarName = "ELEVATOR TRIM PCT",
+                            Units = "Percent",
                             TelemetryPrefix = 'T',
+                            DataIndex = 1,
                             InputMin = -100,
                             InputMax = 100,
                             OutputMin = 0,
@@ -179,7 +221,9 @@ public partial class MainViewModel : ObservableObject
             {
                 if (!_simService.IsConnected && _mainWindowHandle != IntPtr.Zero)
                 {
-                    await Task.Run(() => _simService.Connect(_mainWindowHandle));
+                    // UPDATED: Pass the instruments to the Connect method
+                    //await Task.Run(() => _simService.Connect(_mainWindowHandle, _activeInstruments));
+                    await Task.Run(() => _simService.Connect(_mainWindowHandle, ActiveInstruments.ToList()));
                 }
 
                 if (!_arduinoService.IsConnected)
@@ -210,12 +254,41 @@ public partial class MainViewModel : ObservableObject
         else if (!IsSimConnected) StatusMessage = "Sim Disconnected...";
         else StatusMessage = "Arduino Disconnected...";
     }
-
     #endregion
 
-    public void TestFlaps(byte targetValue)
+    public void TestFlaps(double testPercent)
     {
-        if (_arduinoService.IsConnected)
-            _arduinoService.SendData('F', targetValue);
+        // 1. Find the Flaps configuration in our loaded list
+        var flapConfig = _activeInstruments.FirstOrDefault(i => i.TelemetryPrefix == 'F');
+
+        if (flapConfig != null && _arduinoService.IsConnected)
+        {
+            // 2. Use the exact same math the Simulator uses
+            byte scaledValue = ScaleValue(testPercent, flapConfig);
+
+            // 3. Send the translated byte to the Leonardo
+            _arduinoService.SendData('F', scaledValue);
+
+            System.Diagnostics.Debug.WriteLine($"TEST: Input {testPercent}% translated to Byte {scaledValue} using OutputMax {flapConfig.OutputMax}");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("TEST: Could not find Flap config or Arduino is disconnected.");
+        }
+    }
+    public void ManualTest(SimInstrument instrument, double percent)
+    {
+        if (_arduinoService.IsConnected && instrument != null)
+        {
+            // Calculate the actual value within the Sim's range
+            // Example Trim: -100 + (0.5 * (100 - (-100))) = 0
+            // Example Flaps: 0 + (0.5 * (100 - 0)) = 50
+            double simValue = instrument.InputMin + (percent / 100.0 * (instrument.InputMax - instrument.InputMin));
+
+            byte scaledValue = ScaleValue(simValue, instrument);
+            _arduinoService.SendData(instrument.TelemetryPrefix, scaledValue);
+
+            System.Diagnostics.Debug.WriteLine($"Manual Test [{instrument.Name}]: UI {percent}% -> SimValue {simValue} -> Byte {scaledValue}");
+        }
     }
 }

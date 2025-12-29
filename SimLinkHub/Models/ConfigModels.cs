@@ -22,8 +22,9 @@ public class SimInstrument
 
     // SimConnect & Routing Info
     public string SimVarName { get; set; } = ""; // e.g. "ELEVATOR TRIM PCT"
+    public string Units { get; set; } = "Percent";        // e.g. "Percent", "Knots", "Feet"
     public char TelemetryPrefix { get; set; } // e.g. 'T' or 'F'
-
+    public int DataIndex { get; set; }
     // Hardware/Pin Details
     public int SignalPin { get; set; } // The physical pin on the Nano
     public string PinType { get; set; } = "PWM"; // PWM, Servo, Stepper

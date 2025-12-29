@@ -1,19 +1,22 @@
-﻿using System;
+﻿using Microsoft.FlightSimulator.SimConnect;
+using SimLinkHub.Models;
+using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Microsoft.FlightSimulator.SimConnect;
+using System.Threading.Tasks;
 
 namespace SimLinkHub.Services
 {
     public class SimConnectService
     {
-        public event Action<SimData>? OnDataReceived;
+        // 1. UPDATED: The event now passes the array of doubles
+        public event Action<double[]>? OnDataReceived;
         private SimConnect? _simConnect;
         public bool IsConnected { get; private set; }
 
-        // User-defined message ID
         public const int WM_USER_SIMCONNECT = 0x0402;
 
-        public void Connect(IntPtr windowHandle)
+        public void Connect(IntPtr windowHandle, List<SimInstrument> instruments)
         {
             if (IsConnected) return;
 
@@ -21,27 +24,43 @@ namespace SimLinkHub.Services
             {
                 _simConnect = new SimConnect("SimLinkHub", windowHandle, WM_USER_SIMCONNECT, null, 0);
 
-                // 1. Map the Sim Variables to our struct
-                _simConnect.AddToDataDefinition(DEFINITIONS.AIRCRAFT_DATA, "TRAILING EDGE FLAPS LEFT PERCENT", "Percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                _simConnect.AddToDataDefinition(DEFINITIONS.AIRCRAFT_DATA, "ELEVATOR TRIM PCT", "Percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                // 2. Map SimVars to indices in the buffer
+                foreach (var inst in instruments)
+                {
+                    _simConnect.AddToDataDefinition(
+                        DEFINITIONS.AIRCRAFT_DATA,
+                        inst.SimVarName,
+                        inst.Units,
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                }
 
+                // 3. Register the DynamicBuffer struct
+                _simConnect.RegisterDataDefineStruct<DynamicBuffer>(DEFINITIONS.AIRCRAFT_DATA);
 
-                // 2. Register the struct type
-                _simConnect.RegisterDataDefineStruct<SimData>(DEFINITIONS.AIRCRAFT_DATA);
+                // 4. Handle Incoming Data
+                _simConnect.OnRecvSimobjectDataBytype += (sender, data) =>
+                {
+                    // Use the standardized enum AIRCRAFT_DATA_REQUEST
+                    if (data.dwRequestID == (uint)DATA_REQUESTS.AIRCRAFT_DATA_REQUEST)
+                    {
+                        DynamicBuffer buffer = (DynamicBuffer)data.dwData[0];
+                        double[] values = buffer.ToArray();
+                        OnDataReceived?.Invoke(values);
+                    }
+                };
 
-                // 3. Listen for the data
-                _simConnect.OnRecvSimobjectData += OnRecvSimobjectData;
+                // 5. Request Data
+                _simConnect.RequestDataOnSimObject(
+                    DATA_REQUESTS.AIRCRAFT_DATA_REQUEST,
+                    DEFINITIONS.AIRCRAFT_DATA,
+                    SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.VISUAL_FRAME,
+                    SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
 
-                // 4. Request the data automatically every time it changes (SIMCONNECT_PERIOD.VISUAL_FRAME)
-                _simConnect.RequestDataOnSimObject(DATA_REQUESTS.AIRCRAFT_DATA, DEFINITIONS.AIRCRAFT_DATA, SimConnect.SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
-
-
-                // Subscribe to basic events
-                // Subscribe to basic events
                 _simConnect.OnRecvOpen += (s, data) =>
                 {
                     IsConnected = true;
-                    StartManualPump(); // <--- START THE PUMP HERE!
+                    StartManualPump();
                 };
 
                 _simConnect.OnRecvQuit += (s, data) => Disconnect();
@@ -59,28 +78,14 @@ namespace SimLinkHub.Services
             IsConnected = false;
         }
 
-        // This must be called when a Windows Message arrives
-        public void ReceiveMessage()
-        {
-            _simConnect?.ReceiveMessage();
-        }
+        public void ReceiveMessage() => _simConnect?.ReceiveMessage();
 
-        private void OnRecvSimobjectData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
-        {
-            if (data.dwRequestID == (uint)DATA_REQUESTS.AIRCRAFT_DATA)
-            {
-                SimData aircraftData = (SimData)data.dwData[0];
-
-                // This sends the data out to the ViewModel
-                OnDataReceived?.Invoke(aircraftData);
-            }
-        }
         public void StartManualPump()
         {
             Task.Run(async () => {
                 while (IsConnected)
                 {
-                    ReceiveMessage(); // Manually pull messages every 10ms
+                    ReceiveMessage();
                     await Task.Delay(10);
                 }
             });
@@ -88,22 +93,29 @@ namespace SimLinkHub.Services
 
     }
 
-    public enum DATA_REQUESTS
-    {
-        AIRCRAFT_DATA
-    }
-
-    public enum DEFINITIONS
-    {
-        AIRCRAFT_DATA
-    }
+    // Standardized Enums
+    public enum DATA_REQUESTS { AIRCRAFT_DATA_REQUEST }
+    public enum DEFINITIONS { AIRCRAFT_DATA }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct SimData
+    public struct DynamicBuffer
     {
-        // This variable name doesn't matter, but the "units" in RegisterDataDefine do!
-        public double FlapsTrailingEdgePercent { get; set; }
-        public double ElevatorTrimPercent { get; set; }
+        public double Val0; public double Val1; public double Val2; public double Val3;
+        public double Val4; public double Val5; public double Val6; public double Val7;
+        public double Val8; public double Val9; public double Val10; public double Val11;
+        public double Val12; public double Val13; public double Val14; public double Val15;
+        public double Val16; public double Val17; public double Val18; public double Val19;
+        public double Val20; public double Val21; public double Val22; public double Val23;
+        public double Val24; public double Val25; public double Val26; public double Val27;
+        public double Val28; public double Val29; public double Val30; public double Val31;
+
+        public double[] ToArray()
+        {
+            return new double[] {
+                Val0, Val1, Val2, Val3, Val4, Val5, Val6, Val7, Val8, Val9, Val10, Val11, Val12, Val13, Val14, Val15,
+                Val16, Val17, Val18, Val19, Val20, Val21, Val22, Val23, Val24, Val25, Val26, Val27, Val28, Val29, Val30, Val31
+            };
+        }
     }
 
 }
