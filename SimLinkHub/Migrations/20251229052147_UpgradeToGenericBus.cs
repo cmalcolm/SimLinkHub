@@ -5,7 +5,7 @@
 namespace SimLinkHub.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class UpgradeToGenericBus : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -49,7 +49,11 @@ namespace SimLinkHub.Migrations
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     ArduinoDeviceId = table.Column<int>(type: "INTEGER", nullable: false),
                     SimVarName = table.Column<string>(type: "TEXT", nullable: false),
-                    TelemetryPrefix = table.Column<char>(type: "TEXT", nullable: false),
+                    Units = table.Column<string>(type: "TEXT", nullable: false),
+                    TelemetryPrefix = table.Column<string>(type: "TEXT", nullable: false),
+                    DeviceType = table.Column<int>(type: "INTEGER", nullable: false),
+                    Slot = table.Column<int>(type: "INTEGER", nullable: false),
+                    DataIndex = table.Column<int>(type: "INTEGER", nullable: false),
                     SignalPin = table.Column<int>(type: "INTEGER", nullable: false),
                     PinType = table.Column<string>(type: "TEXT", nullable: false),
                     InputMin = table.Column<double>(type: "REAL", nullable: false),

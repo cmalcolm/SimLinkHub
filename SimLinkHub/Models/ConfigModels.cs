@@ -1,4 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SimLinkHub.Models;
 
@@ -10,7 +12,8 @@ public class ArduinoDevice
     public byte I2CAddress { get; set; } // e.g., 0x09 or 0x10
 }
 
-public class SimInstrument
+//public class SimInstrument
+public partial class SimInstrument : ObservableObject
 {
     [Key]
     public int Id { get; set; }
@@ -23,7 +26,10 @@ public class SimInstrument
     // SimConnect & Routing Info
     public string SimVarName { get; set; } = ""; // e.g. "ELEVATOR TRIM PCT"
     public string Units { get; set; } = "Percent";        // e.g. "Percent", "Knots", "Feet"
-    public char TelemetryPrefix { get; set; } // e.g. 'T' or 'F'
+    public string TelemetryPrefix { get; set; } = string.Empty; // e.g. 'TRM' or 'FLP'
+    public int DeviceType { get; set; } = 1; // 1=Servo, 2=LED, etc.
+    public int Slot { get; set; } = 0;       // Pin/Index on the Nano
+
     public int DataIndex { get; set; }
     // Hardware/Pin Details
     public int SignalPin { get; set; } // The physical pin on the Nano
@@ -36,4 +42,11 @@ public class SimInstrument
     public byte OutputMax { get; set; } = 255;
 
     public bool IsInverted { get; set; } = false;
+    [ObservableProperty]
+    [property: NotMapped] // This forces [NotMapped] onto the generated 'RawSimValue'
+    private double _rawSimValue;
+
+    [ObservableProperty]
+    [property: NotMapped] // This forces [NotMapped] onto the generated 'SentByteValue'
+    private byte _sentByteValue;
 }

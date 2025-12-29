@@ -10,8 +10,8 @@ using SimLinkHub.Data;
 namespace SimLinkHub.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251228111639_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20251229052147_UpgradeToGenericBus")]
+    partial class UpgradeToGenericBus
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -71,6 +71,12 @@ namespace SimLinkHub.Migrations
                     b.Property<int>("ArduinoDeviceId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("DataIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceType")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double>("InputMax")
                         .HasColumnType("REAL");
 
@@ -101,7 +107,15 @@ namespace SimLinkHub.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<char>("TelemetryPrefix")
+                    b.Property<int>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TelemetryPrefix")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Units")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

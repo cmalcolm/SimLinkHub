@@ -68,6 +68,12 @@ namespace SimLinkHub.Migrations
                     b.Property<int>("ArduinoDeviceId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("DataIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceType")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double>("InputMax")
                         .HasColumnType("REAL");
 
@@ -98,7 +104,15 @@ namespace SimLinkHub.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<char>("TelemetryPrefix")
+                    b.Property<int>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TelemetryPrefix")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Units")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

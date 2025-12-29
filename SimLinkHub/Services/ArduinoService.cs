@@ -138,6 +138,28 @@ namespace SimLinkHub.Services
                 }
             }
         }
+        public void SendDataRaw(byte[] data)
+        {
+            try
+            {
+                if (_serialPort != null && _serialPort.IsOpen)
+                {
+                    // Write the array to the serial buffer
+                    // Offset 0, length of the array (7 bytes in our case)
+                    _serialPort.Write(data, 0, data.Length);
 
+                    // Optional: Flush ensures the data is pushed out immediately
+                    _serialPort.BaseStream.Flush();
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("SERIAL ERROR: Attempted to send data but port is closed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SERIAL EXCEPTION: {ex.Message}");
+            }
+        }
     }
 }
